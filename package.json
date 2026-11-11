@@ -1,7 +1,7 @@
 {
   "name": "signalk-maintenance-tracker-mcp",
-  "version": "0.1.0",
-  "description": "Boat maintenance for Signal K: service intervals by time, engine hours or season, a defect register and checklists, kept as git-backed YAML. A web app to work by hand, and a built-in MCP server so Claude can read and log the work.",
+  "version": "0.1.1",
+  "description": "AI-enabled boat maintenance tracker for Signal K. Track service intervals, issues and checklists by chat (MCP) or in the web app.",
   "license": "MIT",
   "author": "fymmot",
   "homepage": "https://github.com/fymmot/signalk-maintenance-tracker-mcp#readme",
