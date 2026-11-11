@@ -1,0 +1,165 @@
+/*
+ * The app shell: window size classes as in M3.
+ *   compact  < 600 px   navigation bar at the bottom, one pane, editors full screen
+ *   medium   600–839    navigation rail, one pane, editors as a side sheet
+ *   expanded ≥ 840      navigation rail, list and detail side by side (resizable)
+ * Content is capped at a readable width on large windows.
+ */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100dvh;
+}
+.shell > .nav-bar {
+  display: none;
+}
+.shell-main {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+@media (max-width: 599px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    --snackbar-bottom: calc(var(--bar-height) + var(--safe-bottom) + 88px);
+  }
+  .shell > .nav-rail {
+    display: none;
+  }
+  .shell > .nav-bar {
+    display: flex;
+  }
+}
+
+/* ---- Panes ----------------------------------------------------------------------- */
+
+.panes {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.pane {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-top: 72px;
+}
+.pane-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 0 24px 120px;
+}
+.pane-list {
+  flex: 1;
+}
+.pane-detail {
+  flex: 1;
+  display: none;
+}
+/* One pane at a time below 840 px: the detail replaces the list. */
+.panes.has-detail .pane-list {
+  display: none;
+}
+.panes.has-detail .pane-detail {
+  display: block;
+}
+.pane-divider {
+  display: none;
+}
+
+@media (min-width: 840px) {
+  .panes.is-split .pane-list {
+    display: block;
+    flex: 0 0 var(--list-width, 420px);
+  }
+  .panes.is-split .pane-detail {
+    display: block;
+    margin: 0 16px 16px 0;
+    border-radius: var(--shape-xl);
+    background: var(--md-surface-container-low);
+    /* Rows and cards step up one role, or they vanish into the pane. */
+    --item-surface: var(--md-surface-container);
+  }
+  .panes.is-split .pane-detail .app-bar {
+    background: var(--md-surface-container-low);
+    border-radius: var(--shape-xl) var(--shape-xl) 0 0;
+  }
+  .panes.is-split .pane-detail .app-bar.is-scrolled {
+    background: var(--md-surface-container);
+  }
+  .panes.is-split .pane-list .pane-inner {
+    padding-inline: 16px 8px;
+  }
+  .panes.is-split .pane-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 24px;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .pane-divider::before {
+    content: '';
+    width: 4px;
+    height: 48px;
+    border-radius: var(--shape-full);
+    background: var(--md-outline);
+    transition:
+      height var(--spring-fast),
+      background-color var(--effects-fast);
+  }
+  .pane-divider:hover::before,
+  .pane-divider:focus-visible::before,
+  .pane-divider.is-dragging::before {
+    height: 64px;
+    background: var(--md-on-surface);
+  }
+}
+@media (max-width: 599px) {
+  .pane-inner {
+    padding: 0 16px calc(var(--bar-height) + 112px);
+  }
+  /* A control tabbed to near the bottom must not end up under the FAB. */
+  .pane {
+    scroll-padding-bottom: 96px;
+  }
+}
+
+/* The FAB: bottom end on phones (above the bar), in the rail from 600 px. */
+.fab-dock {
+  position: fixed;
+  z-index: 20;
+  right: 16px;
+  bottom: calc(var(--bar-height) + var(--safe-bottom) + 16px);
+}
+@media (min-width: 600px) {
+  .fab-dock {
+    display: none;
+  }
+}
+@media (max-width: 599px) {
+  .nav-rail-fab {
+    display: none;
+  }
+}
+
+/* Detail placeholder on wide screens before anything is opened. */
+.detail-placeholder {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 320px;
+  padding: 24px;
+  text-align: center;
+  color: var(--md-on-surface-variant);
+}

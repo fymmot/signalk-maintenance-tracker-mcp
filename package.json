@@ -1,0 +1,84 @@
+{
+  "name": "signalk-maintenance-tracker-mcp",
+  "version": "0.1.0",
+  "description": "Boat maintenance for Signal K: service intervals by time, engine hours or season, a defect register and checklists, kept as git-backed YAML. A web app to work by hand, and a built-in MCP server so Claude can read and log the work.",
+  "license": "MIT",
+  "author": "fymmot",
+  "homepage": "https://github.com/fymmot/signalk-maintenance-tracker-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fymmot/signalk-maintenance-tracker-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fymmot/signalk-maintenance-tracker-mcp/issues"
+  },
+  "keywords": [
+    "signalk",
+    "signalk-node-server-plugin",
+    "signalk-category-utility",
+    "signalk-webapp",
+    "maintenance",
+    "logbook",
+    "service-intervals",
+    "checklists",
+    "mcp",
+    "claude"
+  ],
+  "signalk-plugin-enabled-by-default": false,
+  "signalk": {
+    "displayName": "Maintenance Tracker",
+    "appIcon": "./assets/icon.png",
+    "screenshots": [
+      "./assets/screenshots/web-work-light.png",
+      "./assets/screenshots/web-mcp-light.png",
+      "./assets/screenshots/web-work-dark.png",
+      "./assets/screenshots/web-phone.jpg"
+    ],
+    "recommends": [
+      "signalk-engine-hours"
+    ]
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "public",
+    "schema",
+    "assets",
+    "scripts",
+    "skill",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && npm run build:web",
+    "build:web": "tsc -p web/tsconfig.json && vite build",
+    "dev:web": "vite",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "seed": "node scripts/seed.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "jsonschema": "^1.5.0",
+    "simple-git": "^4.0.2",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@fontsource-variable/roboto-flex": "^5.3.0",
+    "@material-symbols/svg-400": "0.48.3",
+    "@preact/signals": "^2.11.4",
+    "@signalk/server-api": "^2.37.0",
+    "@types/node": "^22.20.5",
+    "happy-dom": "^21.0.4",
+    "preact": "^11.2.0",
+    "typescript": "^5.8.3",
+    "vite": "^8.3.8",
+    "vitest": "^4.1.12"
+  }
+}

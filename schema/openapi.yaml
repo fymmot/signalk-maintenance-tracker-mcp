@@ -1,0 +1,2120 @@
+openapi: 3.0.3
+info:
+  title: Signal K Maintenance Tracker
+  description: >-
+    REST API for boat maintenance tracking: a System/Component/Part hierarchy
+    with scheduled service-interval triggers, a known-issue/defect register,
+    and checklist templates and runs. This API is the single source of truth:
+    the plugin's web app, its built-in MCP server and other apps are clients of
+    it. Read routes are open to read-only users and writes to read-write users
+    (Signal K 2.x); GET /status is for admins.
+  version: 0.1.0
+tags:
+  - name: nodes
+    description: System / Component / Part hierarchy and their service triggers
+  - name: service
+    description: Recording completed maintenance
+  - name: due
+    description: Upcoming and overdue maintenance
+  - name: issues
+    description: Known-issue / defect register
+  - name: seasons
+    description: Launch / haulout dates delimiting each boat season
+  - name: events
+    description: Free-form boat events for the timeline
+  - name: timeline
+    description: Merged chronological feed of services, events, and season milestones
+  - name: checklists
+    description: Checklist templates and runs
+  - name: photos
+    description: >-
+      Photos on records. Uploads wait as pending handles (ph_…) until a write
+      names them in `photos: [{handle, caption?}]` — accepted by POST/PUT
+      /nodes, POST /nodes/{id}/service, POST/PUT /issues (on PUT, onto the
+      history entry the update appends), POST/PUT /events, checklist run
+      results, and POST /attachments. Linked photos live in the repo as
+      media/{id}; unlinked uploads expire after 7 days.
+  - name: status
+    description: Plugin and MCP server health
+paths:
+  /nodes:
+    get:
+      tags: [nodes]
+      summary: List all nodes (flat)
+      responses:
+        '200':
+          description: List of nodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/MaintenanceNode'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: listNodes
+    post:
+      tags: [nodes]
+      summary: Create a node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeWrite'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceNode'}
+        '409':
+          description: The id given is taken; update that node with PUT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: createNode
+  /starter-boat:
+    get:
+      tags: [nodes]
+      operationId: getStarterBoat
+      summary: The starter boat, as node bodies
+      parameters:
+        - {name: lang, in: query, required: false, schema: {type: string, enum: [en, sv]}}
+      responses:
+        '200': {description: The tree, parents first}
+    post:
+      tags: [nodes]
+      operationId: createStarterBoat
+      summary: Create the starter boat
+      description: >-
+        Creates every node of the starter boat that isn't there yet (by id), so
+        running it twice adds nothing.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lang: {type: string, enum: [en, sv]}
+      responses:
+        '201': {description: Nodes created}
+        '200': {description: Nothing to create}
+  /nodes/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [nodes]
+      summary: Read a node
+      responses:
+        '200':
+          description: Node
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceNode'}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: getNode
+    put:
+      tags: [nodes]
+      summary: Update a node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeWrite'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceNode'
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: updateNode
+    delete:
+      tags: [nodes]
+      summary: Delete a node
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+        '409':
+          description: The node has children
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+        - name: recursive
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Also delete every node under this one. Logs, issues and events
+            that point at them are kept.
+      description: A node with nodes under it answers 409 with the list unless
+        `recursive=true`.
+      operationId: deleteNode
+  /nodes/{id}/logs:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [nodes]
+      summary: List service logs for a node
+      responses:
+        '200':
+          description: Logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ServiceLog'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: listNodeLogs
+  /nodes/{id}/service:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [service]
+      summary: Mark a node serviced
+      description: >-
+        Records a service log and resets the named triggers (or all enabled
+        triggers if none named) to the current metric values. Expiry triggers
+        renew only with `expiresOn`, the replacement's date.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ServiceRequest'}
+      responses:
+        '201':
+          description: Service recorded
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ServiceLog'}
+        '404': {description: Node not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: markServiced
+  /nodes/{id}/triggers/{triggerId}/snooze:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+      - {name: triggerId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [due]
+      summary: Snooze a trigger's notification
+      description: >-
+        Suppresses this trigger's notifications.maintenance.* alarm until the
+        given time. The computed due status is unaffected; only the emitted
+        notification is cleared until the snooze expires.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SnoozeRequest'}
+      responses:
+        '200':
+          description: Updated trigger
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceTrigger'}
+        '400': {description: Invalid snooze request}
+        '404': {description: Node or trigger not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: snoozeTrigger
+    delete:
+      tags: [due]
+      summary: Clear a trigger's snooze
+      responses:
+        '200':
+          description: Updated trigger
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceTrigger'}
+        '404': {description: Node or trigger not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: unsnoozeTrigger
+  /due:
+    get:
+      tags: [due]
+      summary: Rollup of upcoming / overdue maintenance
+      responses:
+        '200':
+          description: Per-node due status
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/NodeDue'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: listDue
+  /logs:
+    get:
+      tags: [service]
+      summary: List service logs
+      parameters:
+        - name: since
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+          description: Only return logs at or after this timestamp (for timeline
+            integration)
+      responses:
+        '200':
+          description: Logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ServiceLog'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: listLogs
+  /logs/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [service]
+      summary: Read a service log
+      responses:
+        '200':
+          description: Log
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ServiceLog'}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: getLog
+    delete:
+      tags: [service]
+      summary: Delete a service log
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: deleteLog
+  /issues:
+    get:
+      tags: [issues]
+      summary: List issues
+      responses:
+        '200':
+          description: Issues
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Issue'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: listIssues
+    post:
+      tags: [issues]
+      summary: Create an issue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IssueCreateRequest'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Issue'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: createIssue
+  /issues/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [issues]
+      summary: Read an issue
+      responses:
+        '200':
+          description: Issue
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Issue'}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: getIssue
+    put:
+      tags: [issues]
+      summary: Update an issue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IssueUpdateRequest'}
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issue'
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: updateIssue
+    delete:
+      tags: [issues]
+      summary: Delete an issue
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: deleteIssue
+  /seasons:
+    get:
+      tags: [seasons]
+      summary: List seasons (newest launch first)
+      responses:
+        '200':
+          description: Seasons
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Season'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: listSeasons
+    post:
+      tags: [seasons]
+      summary: Create a season
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeasonWrite'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Season'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: createSeason
+  /seasons/current:
+    get:
+      tags: [seasons]
+      summary: The season in progress (afloat) right now, if any
+      responses:
+        '200':
+          description: Current season and afloat flag
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  afloat: {type: boolean}
+                  season:
+                    oneOf:
+                      - {$ref: '#/components/schemas/Season'}
+                      - {type: 'null'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: getCurrentSeason
+  /seasons/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [seasons]
+      summary: Read a season
+      responses:
+        '200':
+          description: Season
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Season'}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: getSeason
+    put:
+      tags: [seasons]
+      summary: Update a season
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeasonWrite'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Season'
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: updateSeason
+    delete:
+      tags: [seasons]
+      summary: Delete a season
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: deleteSeason
+  /events:
+    get:
+      tags: [events]
+      summary: List boat events (newest first)
+      parameters:
+        - name: since
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+          description: Only return events at or after this timestamp
+        - name: category
+          in: query
+          required: false
+          schema: {type: string}
+          description: Only return events of this category
+      responses:
+        '200':
+          description: Events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Event'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: listEvents
+    post:
+      tags: [events]
+      summary: Create an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventWrite'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Event'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: createEvent
+  /events/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [events]
+      summary: Read an event
+      responses:
+        '200':
+          description: Event
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Event'}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: getEvent
+    put:
+      tags: [events]
+      summary: Update an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventWrite'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: updateEvent
+    delete:
+      tags: [events]
+      summary: Delete an event
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: deleteEvent
+  /timeline:
+    get:
+      tags: [timeline]
+      summary: Merged chronological feed (services + events + season milestones)
+      parameters:
+        - name: since
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+          description: Only return entries at or after this timestamp
+      responses:
+        '200':
+          description: Timeline entries, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/TimelineEntry'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: getTimeline
+  /checklists/templates:
+    get:
+      tags: [checklists]
+      summary: List checklist templates
+      responses:
+        '200':
+          description: Templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ChecklistTemplate'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: listChecklistTemplates
+    post:
+      tags: [checklists]
+      summary: Create a checklist template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChecklistTemplateWrite'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChecklistTemplate'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: createChecklistTemplate
+  /checklists/templates/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [checklists]
+      summary: Read a checklist template
+      responses:
+        '200':
+          description: Template
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChecklistTemplate'}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: getChecklistTemplate
+    put:
+      tags: [checklists]
+      summary: Update a checklist template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChecklistTemplateWrite'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistTemplate'
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: updateChecklistTemplate
+    delete:
+      tags: [checklists]
+      summary: Delete a checklist template
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: deleteChecklistTemplate
+  /checklists/runs:
+    get:
+      tags: [checklists]
+      summary: List checklist runs
+      responses:
+        '200':
+          description: Runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ChecklistRun'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: listChecklistRuns
+    post:
+      tags: [checklists]
+      summary: Save a checklist run
+      description: >
+        Persists a checklist run. Send a full ChecklistRun (with `results`) to
+        save a run that was filled in on the client — this is how the app
+        avoids recording a run that was merely opened and then discarded.
+        Sending only a ChecklistRunRequest (`templateId`) instantiates a
+        fresh, all-pending run server-side (API / back-compat).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/ChecklistRun'
+                - $ref: '#/components/schemas/ChecklistRunRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChecklistRun'}
+        '404': {description: Template not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: createChecklistRun
+  /checklists/runs/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [checklists]
+      summary: Read a checklist run
+      responses:
+        '200':
+          description: Run
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChecklistRun'}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: getChecklistRun
+    put:
+      tags: [checklists]
+      summary: Update a checklist run (record results)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ChecklistRun'}
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistRun'
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: updateChecklistRun
+    delete:
+      tags: [checklists]
+      summary: Delete a checklist run
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: deleteChecklistRun
+  /photos/pending:
+    get:
+      tags: [photos]
+      summary: List uploads not yet linked to a record, newest first
+      parameters:
+        - {
+            name: includeLinked,
+            in: query,
+            schema: {type: string, enum: ['true']},
+            description: Include handles already linked (until they expire)
+          }
+      responses:
+        '200':
+          description: Pending uploads
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/PendingPhoto'}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: listPendingPhotos
+    post:
+      tags: [photos]
+      summary: Upload one JPEG as a pending photo
+      description: >-
+        Metadata segments (EXIF, GPS, XMP, comments) are stripped before the
+        image is hashed and stored. The photo panel calls this through the MCP
+        tool maintenance_photo_upload after shrinking the image.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [contentBase64]
+              properties:
+                contentBase64:
+                  {
+                    type: string,
+                    description: JPEG bytes,
+                    base64 (a data URL prefix is tolerated)
+                  }
+                takenAt: {type: string, format: date-time}
+                note: {type: string}
+      responses:
+        '201':
+          description: Stored
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PendingPhoto'}
+        '400': {description: Not a JPEG, empty, or larger than 6 MB}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: uploadPhoto
+  /photos/pending/{handle}:
+    parameters:
+      - {
+          name: handle,
+          in: path,
+          required: true,
+          schema: {type: string, pattern: '^ph_[0-9a-f]{12}$'}
+        }
+    get:
+      tags: [photos]
+      summary: The image behind a handle
+      responses:
+        '200':
+          description: JPEG
+          content:
+            image/jpeg: {schema: {type: string, format: binary}}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: getPendingPhoto
+    delete:
+      tags: [photos]
+      summary: Discard an upload (linked copies stay on their records)
+      responses:
+        '204': {description: Discarded}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: discardPendingPhoto
+  /photos/sweep:
+    post:
+      tags: [photos]
+      summary: Delete handles older than 7 days
+      responses:
+        '200':
+          description: How many expired
+          content:
+            application/json:
+              schema: {type: object, properties: {expired: {type: integer}}}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: sweepPendingPhotos
+  /media/{id}:
+    parameters:
+      - {
+          name: id,
+          in: path,
+          required: true,
+          schema: {type: string, pattern: '^[0-9a-f]{64}\.jpg$'}
+        }
+    get:
+      tags: [photos]
+      summary: A photo attached to a record
+      description: Content-addressed, so it is served with an immutable cache header.
+      responses:
+        '200':
+          description: JPEG
+          content:
+            image/jpeg: {schema: {type: string, format: binary}}
+        '404': {description: Not found}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: getMedia
+  /attachments:
+    post:
+      tags: [photos]
+      summary: Add photos to, or remove them from, an existing record
+      description: >-
+        The way to put a photo on a service log (logs have no update route),
+        or on an issue itself rather than on one of its updates. Removing a
+        photo from an issue removes it from its history entries too. The image
+        stays in the repo's history.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind, id]
+              properties:
+                kind: {type: string, enum: [node, log, issue, event, run]}
+                id: {type: string}
+                itemId:
+                  {
+                    type: string,
+                    description: Required for kind run — the result the photos belong to
+                  }
+                photos: {$ref: '#/components/schemas/PhotoRefs'}
+                remove:
+                  type: array
+                  items: {type: string}
+                  description: Attachment ids to take off the record
+                captions:
+                  type: object
+                  additionalProperties: {type: string}
+                  description: >-
+                    New captions by attachment id; an empty string removes the
+                    caption. On an issue it also applies to its updates.
+      responses:
+        '200': {description: The updated record}
+        '400': {description: Bad kind, unknown handle, or nothing to do}
+        '404': {description: No such record}
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      operationId: updateAttachments
+  /work:
+    get:
+      tags:
+        - due
+      operationId: getWork
+      summary: The work queue
+      responses:
+        '200':
+          description: Work queue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkQueue'
+        '503':
+          description: The plugin is stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /status:
+    get:
+      tags:
+        - status
+      operationId: getStatus
+      summary: Plugin health (admin only)
+      description: 'Git backup state, current metric readings and the MCP server.
+        Answers `running: false` while the plugin is stopped.'
+      responses:
+        '200':
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginStatus'
+components:
+  schemas:
+    # ---- Records (self-contained: also used as JSON-Schema for validation) ----
+    MaintenanceNode:
+      type: object
+      additionalProperties: false
+      required: [id, type, name, triggers, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+          example: yanmar-3ym20
+        type:
+          type: string
+          enum: [system, component, part]
+        parentId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+        name:
+          type: string
+          example: Yanmar 3YM20
+        manufacturer: {type: string}
+        model: {type: string}
+        serial: {type: string}
+        notes: {type: string}
+        attachments: &attachments
+          type: array
+          description: >-
+            Photos, served by GET /media/{id}. Writes add new ones as `photos`
+            handles from the photo panel; sending `attachments` replaces the
+            list (to drop a photo or fix a caption), and only ids already in
+            the repo are accepted.
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, addedAt]
+            properties:
+              id:
+                type: string
+                pattern: '^[0-9a-f]{64}\.jpg$'
+                description: SHA-256 of the JPEG plus .jpg; the file is media/{id} in the
+                  datastore repo
+              caption:
+                type: string
+                maxLength: 200
+                example: Nameplate
+              takenAt:
+                type: string
+                format: date-time
+                description: When the photo was taken, as far as the device said
+              addedAt: {type: string, format: date-time}
+              width: {type: integer, minimum: 1}
+              height: {type: integer, minimum: 1}
+        triggers:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, name, metric, lastServiceValue, lastServiceDate, enabled]
+            properties:
+              id:
+                type: string
+                pattern: '^[A-Za-z0-9._-]+$'
+              name:
+                type: string
+                example: Heat-exchanger pencil anode
+              metric:
+                type: string
+                enum: [calendarTime, engineHours, tripCount, seasonAnchor, expiry]
+              interval:
+                type: number
+                minimum: 0
+                description: >-
+                  Days for calendarTime, hours for engineHours, trips for
+                  tripCount. Ignored for seasonAnchor (cadence is the season)
+                  and expiry (each replacement has its own date).
+              anchor:
+                type: object
+                additionalProperties: false
+                required: [milestone, offsetDays]
+                description: >-
+                  Required for seasonAnchor triggers. Due date is the
+                  milestone shifted by offsetDays (negative = before, e.g. -14
+                  = two weeks before launch). A service counts toward a
+                  milestone from the opposite milestone before it (a haulout
+                  task from that season's launch, a launch task from the
+                  previous haulout).
+                properties:
+                  milestone:
+                    type: string
+                    enum: [launch, haulout]
+                  offsetDays:
+                    type: number
+              expiresOn:
+                type: string
+                pattern: '^\d{4}-\d{2}-\d{2}$'
+                example: '2027-03-31'
+                description: >-
+                  For expiry triggers: the date printed on the item (flares,
+                  extinguishers, life-jacket cartridges), due on that day.
+                  Absent = not known yet (status unknown). Writes also accept
+                  YYYY-MM, meaning the last day of that month.
+              warnLead:
+                type: number
+                minimum: 0
+                description: Lead amount (same unit as interval) before due at which to warn
+              lastServiceValue:
+                type: number
+                description: Metric value at last service (days-since-epoch for calendarTime)
+              lastServiceDate:
+                type: string
+                format: date-time
+              enabled:
+                type: boolean
+              snoozedUntil:
+                type: string
+                format: date-time
+                description: >-
+                  While in the future, suppresses this trigger's
+                  notifications.maintenance.* alarm (computed status is
+                  unaffected). Set via the snooze endpoint.
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ServiceLog:
+      type: object
+      additionalProperties: false
+      required: [id, datetime, nodeId, description]
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+        datetime: {type: string, format: date-time}
+        nodeId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+        triggerIds:
+          type: array
+          items: {type: string}
+        description:
+          type: string
+          example: Replaced impeller
+        comment:
+          type: string
+          description: Short free-text note
+          example: Using 3M green + blue cap
+        metrics:
+          type: object
+          additionalProperties: false
+          properties:
+            calendarTime: {type: number}
+            engineHours: {type: number}
+            tripCount: {type: number}
+        partsReplaced:
+          type: array
+          items: {type: string}
+        expiresOn:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: New expiry date this service set on the node's expiry triggers
+        cost:
+          type: number
+          description: Cost of the work, in costCurrency
+        costCurrency:
+          type: string
+          description: ISO 4217 currency code for cost (upper-cased); shown as SEK when omitted
+          example: SEK
+        author: {type: string}
+        attachments: *attachments
+    Issue:
+      type: object
+      additionalProperties: false
+      required: [id, nodeId, title, status, openedAt, updatedAt]
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+        nodeId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+        title:
+          type: string
+          example: Engine-hours LCD broken
+        description: {type: string}
+        status:
+          type: string
+          enum: [open, monitoring, resolved]
+        severity:
+          type: string
+          enum: [low, medium, high]
+        openedAt: {type: string, format: date-time}
+        resolvedAt: {type: string, format: date-time}
+        resolutionLogId: {type: string}
+        fixBy:
+          type: string
+          enum: [launch, haulout]
+          description: The season milestone this should be fixed by (e.g. "before launch")
+        updatedAt: {type: string, format: date-time}
+        attachments: *attachments
+        history:
+          type: array
+          description: >-
+            Append-only audit trail of opens, status changes, and comments.
+            Optional on legacy records; the server backfills opened/resolved
+            entries from openedAt/resolvedAt when absent.
+          items:
+            type: object
+            additionalProperties: false
+            required: [datetime, type]
+            properties:
+              datetime: {type: string, format: date-time}
+              type:
+                type: string
+                enum: [opened, status, comment, resolved, reopened]
+              status:
+                type: string
+                enum: [open, monitoring, resolved]
+              comment: {type: string}
+              author: {type: string}
+              attachments: *attachments
+    Season:
+      type: object
+      additionalProperties: false
+      required: [id, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+          example: '2026'
+        label:
+          type: string
+          example: 2026 season
+        launchDate:
+          type: string
+          description: ISO date or date-time; the boat is afloat from this date
+          example: '2026-05-03'
+        hauloutDate:
+          type: string
+          description: ISO date or date-time; absent while still afloat
+          example: '2026-10-18'
+        notes: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    Event:
+      type: object
+      additionalProperties: false
+      required: [id, datetime, category, title, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+        datetime: {type: string, format: date-time}
+        category:
+          type: string
+          description: >-
+            Open string. Common values: acquisition, mooring, regatta,
+            upgrade, incident, milestone, note.
+          example: regatta
+        title:
+          type: string
+          example: ÅF Offshore Race
+        description: {type: string}
+        nodeId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+          description: Optional link to a maintenance node
+        location: {type: string}
+        attachments: *attachments
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ChecklistTemplate:
+      type: object
+      additionalProperties: false
+      required: [id, name, items, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+        name:
+          type: string
+          example: Spring fit-out
+        description: {type: string}
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, text]
+            properties:
+              id:
+                type: string
+                pattern: '^[A-Za-z0-9._-]+$'
+              text: {type: string}
+              category: {type: string}
+              nodeId:
+                type: string
+                pattern: '^[A-Za-z0-9._-]+$'
+                description: The node a failed check is about
+        schedule:
+          type: array
+          description: >-
+            When a client should suggest running this checklist, or one
+            section of it: from the season milestone until `withinDays` after
+            it.
+          items:
+            type: object
+            additionalProperties: false
+            required: [milestone]
+            properties:
+              section:
+                type: string
+                description: Item `category` this entry covers; absent = the whole checklist
+              milestone:
+                type: string
+                enum: [launch, haulout]
+              withinDays:
+                type: number
+                minimum: 0
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ChecklistRun:
+      type: object
+      additionalProperties: false
+      required: [id, templateId, name, startedAt, results]
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+        templateId:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+        name: {type: string}
+        section:
+          type: string
+          description: Template section (item `category`) this run covers; absent = all
+            of it
+        startedAt: {type: string, format: date-time}
+        completedAt: {type: string, format: date-time}
+        author: {type: string}
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [itemId, text, status]
+            properties:
+              itemId: {type: string}
+              text: {type: string}
+              status:
+                type: string
+                enum: [pending, pass, fail, skip]
+              note: {type: string}
+              timestamp: {type: string, format: date-time}
+              attachments: *attachments
+    # ---- Photos ----
+    PendingPhoto:
+      type: object
+      properties:
+        handle: {type: string, pattern: '^ph_[0-9a-f]{12}$'}
+        id: {type: string, description: The attachment id it gets once linked}
+        bytes: {type: integer}
+        width: {type: integer}
+        height: {type: integer}
+        takenAt: {type: string, format: date-time}
+        note: {type: string}
+        createdAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+        linkedTo:
+          type: array
+          items: {type: string}
+          description: Records it has been linked to, as kind:id
+    PhotoRefs:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [handle]
+        properties:
+          handle: {type: string, pattern: '^ph_[0-9a-f]{12}$'}
+          caption: {type: string, maxLength: 200}
+    # ---- Computed read models ----
+    NodeDue:
+      type: object
+      properties:
+        nodeId: {type: string}
+        name: {type: string}
+        type: {type: string, enum: [system, component, part]}
+        status:
+          type: string
+          enum: [ok, dueSoon, overdue, unknown]
+          description: >-
+            Status from this node's own triggers, made overdue by an open
+            medium- or high-severity issue on the node (see the snooze-aware
+            per-trigger status for service alone)
+        rollupStatus:
+          type: string
+          enum: [ok, dueSoon, overdue, unknown]
+          description: Worst status of this node and all its descendants
+        triggers:
+          type: array
+          items:
+            $ref: '#/components/schemas/TriggerDue'
+    TimelineEntry:
+      type: object
+      properties:
+        datetime: {type: string, format: date-time}
+        kind:
+          type: string
+          enum:
+            [
+              service,
+              event,
+              launch,
+              haulout,
+              checklist,
+              issueOpened,
+              issueResolved
+            ]
+        refId: {type: string, description: Id of the source record}
+        title: {type: string}
+        category: {type: string}
+        nodeId: {type: string}
+        note:
+          type: string
+          description: Optional note, e.g. an issue's resolution comment
+    # ---- Request bodies ----
+    ServiceRequest:
+      type: object
+      additionalProperties: false
+      required: [description]
+      properties:
+        triggerIds:
+          type: array
+          items: {type: string}
+          description: >-
+            Triggers to reset; if omitted, all enabled triggers are reset
+            (expiry triggers only when expiresOn is given)
+        expiresOn:
+          type: string
+          description: >-
+            The date printed on the replacement (YYYY-MM-DD, or YYYY-MM for
+            the month's last day). Required to renew an expiry trigger; a
+            service without it leaves expiry dates alone.
+        datetime: {type: string, format: date-time}
+        description: {type: string}
+        comment:
+          type: string
+          description: Short free-text note
+        partsReplaced:
+          type: array
+          items: {type: string}
+        cost:
+          type: number
+          description: Cost of the work, in costCurrency
+        costCurrency:
+          type: string
+          description: ISO 4217 currency code for cost (upper-cased); shown as SEK when omitted
+          example: SEK
+        author: {type: string}
+        photos:
+          type: array
+          description: >-
+            Photos to attach, as handles from the photo panel
+            (maintenance_attach_photos). Each photo moves into the repo with
+            this write.
+          items:
+            type: object
+            additionalProperties: false
+            required: [handle]
+            properties:
+              handle: {type: string, pattern: '^ph_[0-9a-f]{12}$'}
+              caption: {type: string, maxLength: 200}
+    ChecklistRunRequest:
+      type: object
+      additionalProperties: false
+      required: [templateId]
+      properties:
+        templateId: {type: string}
+        author: {type: string}
+    IssueCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        id: {type: string, pattern: '^[A-Za-z0-9._-]+$'}
+        nodeId: {type: string, pattern: '^[A-Za-z0-9._-]+$'}
+        title: {type: string, example: Engine-hours LCD broken}
+        description: {type: string}
+        status: {type: string, enum: [open, monitoring, resolved]}
+        severity: {type: string, enum: [low, medium, high]}
+        openedAt: {type: string, format: date-time}
+        resolutionLogId: {type: string}
+        fixBy: {type: string, enum: [launch, haulout]}
+        author: {type: string}
+        comment:
+          type: string
+          description: Optional opening note; recorded on the issue's opened-history
+            entry.
+        photos:
+          type: array
+          description: >-
+            Photos to attach, as handles from the photo panel
+            (maintenance_attach_photos). Each photo moves into the repo with
+            this write.
+          items:
+            type: object
+            additionalProperties: false
+            required: [handle]
+            properties:
+              handle: {type: string, pattern: '^ph_[0-9a-f]{12}$'}
+              caption: {type: string, maxLength: 200}
+    IssueUpdateRequest:
+      type: object
+      additionalProperties: false
+      description: >-
+        Partial update. Any provided `comment` is appended to the issue's
+        history (not stored as a top-level field); status transitions are
+        recorded automatically. Resolving stamps `resolvedAt`.
+      properties:
+        nodeId: {type: string, pattern: '^[A-Za-z0-9._-]+$'}
+        title: {type: string}
+        description: {type: string}
+        status: {type: string, enum: [open, monitoring, resolved]}
+        severity: {type: string, enum: [low, medium, high]}
+        resolutionLogId: {type: string}
+        fixBy:
+          type: string
+          enum: [launch, haulout]
+          description: Send any other value (e.g. null) to clear it.
+        author: {type: string}
+        comment:
+          type: string
+          description: >-
+            Free-text note recorded in the issue's history. On a resolve it
+            becomes the resolution comment shown on the timeline.
+        photos:
+          type: array
+          description: >-
+            Photos that go with this update: they are attached to the history
+            entry it appends (a comment entry when nothing else changed).
+            Handles from the photo panel.
+          items:
+            type: object
+            additionalProperties: false
+            required: [handle]
+            properties:
+              handle: {type: string, pattern: '^ph_[0-9a-f]{12}$'}
+              caption: {type: string, maxLength: 200}
+        attachments:
+          type: array
+          description: Replaces the issue's own photos (ids already in the repo)
+          items: {type: object}
+    SnoozeRequest:
+      type: object
+      additionalProperties: false
+      description: Provide either `until` (absolute) or `days` (relative to now).
+      properties:
+        until:
+          type: string
+          format: date-time
+          description: Suppress the alarm until this ISO date-time
+        days:
+          type: number
+          minimum: 0
+          description: Suppress the alarm for this many days from now
+    MaintenanceTrigger:
+      type: object
+      additionalProperties: false
+      required: [id, name, metric, lastServiceValue, lastServiceDate, enabled]
+      properties:
+        id: {type: string, pattern: '^[A-Za-z0-9._-]+$'}
+        name: {type: string}
+        metric:
+          type: string
+          enum: [calendarTime, engineHours, tripCount, seasonAnchor, expiry]
+        interval: {type: number, minimum: 0}
+        anchor:
+          type: object
+          additionalProperties: false
+          required: [milestone, offsetDays]
+          properties:
+            milestone: {type: string, enum: [launch, haulout]}
+            offsetDays: {type: number}
+        expiresOn: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$'}
+        warnLead: {type: number, minimum: 0}
+        lastServiceValue: {type: number}
+        lastServiceDate: {type: string, format: date-time}
+        enabled: {type: boolean}
+        snoozedUntil: {type: string, format: date-time}
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+      additionalProperties: true
+      description: Error body. A 409 may add fields that explain the clash, such as
+        `descendants`.
+    NodeWrite:
+      type: object
+      description: 'A node to create or update. The server sets id (from the name,
+        unless given), timestamps and trigger defaults. On PUT, `triggers`
+        replaces the whole list: send every trigger.'
+      required:
+        - name
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+          pattern: ^[A-Za-z0-9._-]+$
+          description: Optional on create. A taken id answers 409; without one the
+            server picks a free id from the name.
+        type:
+          type: string
+          enum:
+            - system
+            - component
+            - part
+        parentId:
+          type: string
+        name:
+          type: string
+        manufacturer:
+          type: string
+        model:
+          type: string
+        serial:
+          type: string
+        notes:
+          type: string
+        triggers:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaintenanceTrigger'
+        photos:
+          $ref: '#/components/schemas/PhotoRefs'
+    SeasonWrite:
+      type: object
+      description: A season to create or update. Missing fields keep their stored value.
+      required: []
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        launchDate:
+          type: string
+        hauloutDate:
+          type: string
+        notes:
+          type: string
+        photos:
+          $ref: '#/components/schemas/PhotoRefs'
+    EventWrite:
+      type: object
+      description: A boat event to create or update. `title` is required on create.
+      required: []
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        datetime:
+          type: string
+          format: date-time
+        category:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        nodeId:
+          type: string
+        location:
+          type: string
+        photos:
+          $ref: '#/components/schemas/PhotoRefs'
+    ChecklistTemplateWrite:
+      type: object
+      description: A checklist to create or update. `items` replaces the list; an
+        empty `schedule` clears it.
+      required: []
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - text
+            properties:
+              id:
+                type: string
+              text:
+                type: string
+              category:
+                type: string
+              nodeId:
+                type: string
+        schedule:
+          type: array
+          items:
+            type: object
+            required:
+              - milestone
+            properties:
+              section:
+                type: string
+              milestone:
+                type: string
+                enum:
+                  - launch
+                  - haulout
+              withinDays:
+                type: number
+        photos:
+          $ref: '#/components/schemas/PhotoRefs'
+    ServiceJob:
+      type: object
+      properties:
+        nodeId:
+          type: string
+        nodeName:
+          type: string
+        trigger:
+          $ref: '#/components/schemas/TriggerDue'
+        dueDay:
+          type: integer
+          description: UTC epoch day; absent for engine hours and trips
+    WorkQueue:
+      type: object
+      description: What needs doing, grouped the way the apps show it. All days are
+        UTC epoch days (days since 1970-01-01).
+      properties:
+        today:
+          type: integer
+        phase:
+          type: object
+          properties:
+            state:
+              type: string
+              enum:
+                - afloat
+                - ashore
+            launched:
+              type: integer
+            plannedHaulout:
+              type: integer
+            hauledOut:
+              type: integer
+            nextLaunch:
+              type: integer
+        nextMilestone:
+          type: string
+          enum:
+            - launch
+            - haulout
+        nextMilestoneDay:
+          type: integer
+        thisWeek:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceJob'
+          description: Dated jobs due within 7 days, and hours or trip jobs inside their
+            warning window
+        overdue:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceJob'
+        snoozed:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceJob'
+          description: Overdue jobs whose notification is snoozed
+        beforeMilestone:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceJob'
+          description: Dated jobs due after this week but by the next launch or haulout
+        milestoneIssues:
+          type: array
+          items:
+            $ref: '#/components/schemas/Issue'
+          description: Open issues to fix by the next milestone
+        openIssues:
+          type: array
+          items:
+            $ref: '#/components/schemas/Issue'
+          description: Other open or monitored issues, worst first
+        suggestedChecklists:
+          type: array
+          items:
+            type: object
+            properties:
+              templateId:
+                type: string
+              templateName:
+                type: string
+              section:
+                type: string
+              milestone:
+                type: string
+                enum:
+                  - launch
+                  - haulout
+              milestoneDay:
+                type: integer
+        inProgressRuns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChecklistRun'
+        staleRuns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChecklistRun'
+          description: Unfinished runs untouched for 14 days
+        badgeCount:
+          type: integer
+          description: thisWeek + overdue
+        systems:
+          type: array
+          items:
+            type: object
+            properties:
+              nodeId:
+                type: string
+              name:
+                type: string
+              openIssues:
+                type: integer
+              highIssues:
+                type: integer
+              overdue:
+                type: integer
+              thisWeek:
+                type: integer
+              next:
+                $ref: '#/components/schemas/ServiceJob'
+              hasSchedules:
+                type: boolean
+              needsAttention:
+                type: boolean
+          description: One summary per top-level system, those needing attention first
+        metrics:
+          type: object
+          properties:
+            engineHours:
+              type: number
+            tripCount:
+              type: number
+          description: Current readings
+    PluginStatus:
+      type: object
+      description: Plugin health. Secrets are reported only as set or not set.
+      properties:
+        version:
+          type: string
+        running:
+          type: boolean
+        git:
+          type: object
+          properties:
+            ready:
+              type: boolean
+            remoteSet:
+              type: boolean
+            pushEnabled:
+              type: boolean
+            lastCommitAt:
+              type: string
+              format: date-time
+            lastPushAt:
+              type: string
+              format: date-time
+            lastPushError:
+              type: string
+            lastError:
+              type: string
+        notifications:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+        metrics:
+          type: object
+          properties:
+            engineHoursPath:
+              type: string
+            tripCountPath:
+              type: string
+            calendarTime:
+              type: number
+            engineHours:
+              type: number
+            tripCount:
+              type: number
+        mcp:
+          type: object
+          properties:
+            state:
+              type: string
+              enum:
+                - off
+                - needsToken
+                - starting
+                - running
+                - error
+            enabled:
+              type: boolean
+            port:
+              type: integer
+            tokenSet:
+              type: boolean
+            urlSecretSet:
+              type: boolean
+            publicUrl:
+              type: string
+            allowedHosts:
+              type: array
+              items:
+                type: string
+            runtime:
+              type: object
+              properties:
+                listening:
+                  type: boolean
+                port:
+                  type: integer
+                startedAt:
+                  type: string
+                  format: date-time
+                requestCount:
+                  type: integer
+                lastRequestAt:
+                  type: string
+                  format: date-time
+                unauthorizedCount:
+                  type: integer
+                lastUnauthorizedAt:
+                  type: string
+                  format: date-time
+                lastError:
+                  type: string
+                dnsRebindingProtection:
+                  type: boolean
+                allowedHosts:
+                  type: array
+                  items:
+                    type: string
+    TriggerDue:
+      type: object
+      properties:
+        triggerId: {type: string}
+        name: {type: string}
+        metric:
+          {
+            type: string,
+            enum: [calendarTime, engineHours, tripCount, seasonAnchor, expiry]
+          }
+        due:
+          type: number
+          nullable: true
+          description: Day number (dated metrics) or metric value when due; null when
+            unknown
+        remaining:
+          type: number
+          nullable: true
+          description: Days, hours or trips left; negative when overdue; null when unknown
+        status: {type: string, enum: [ok, dueSoon, overdue, unknown]}
+        snoozedUntil:
+          type: string
+          format: date-time
+          description: Present when an active snooze is suppressing this trigger's alarm

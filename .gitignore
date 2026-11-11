@@ -1,0 +1,19 @@
+node_modules/
+dist/
+
+test/**/*.js
+test/**/*.js.map
+test/**/*.d.ts
+test/**/*.d.ts.map
+.claude/
+.env
+.env.local
+
+# Python MCP bridge
+mcp/.venv/
+mcp/__pycache__/
+mcp/.env
+
+# Web app build output (built by `npm run build`, shipped in the package)
+public/
+.dev-data/

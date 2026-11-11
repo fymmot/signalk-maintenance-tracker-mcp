@@ -1,0 +1,20 @@
+# Runs the shared Signal K plugin CI (Linux x64/arm64, macOS, Windows on Node 22/24/26).
+# The Signal K plugin registry looks for this run on the commit each npm release was
+# published from, so publish only from a commit this workflow has run on.
+name: SignalK Plugin CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  plugin-ci:
+    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@master
+    with:
+      test-command: npm test
+      build-command: npm run build

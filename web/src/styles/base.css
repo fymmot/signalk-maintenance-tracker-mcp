@@ -1,0 +1,185 @@
+/* Base and type scale. The type classes are the planner's, plus the display and
+   headline steps a dashboard needs. Numbers use tabular figures throughout. */
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+body {
+  font-family: var(--font);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+#app {
+  height: 100%;
+}
+[hidden] {
+  display: none !important;
+}
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+a {
+  color: var(--md-primary);
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+.icon {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  fill: currentColor;
+}
+
+/* Type scale: M3 baseline; emphasized roles in Roboto Flex at display weight. */
+.display-m {
+  font-size: 45px;
+  line-height: 52px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.display-s {
+  font-size: 36px;
+  line-height: 44px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+.headline-l {
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.headline-m {
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 700;
+}
+.headline-s {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 400;
+}
+.emph {
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+.title-l {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 500;
+}
+.title-m {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: 0.15px;
+}
+.title-s {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+}
+.body-l {
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: 0.25px;
+}
+.body-m {
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0.25px;
+}
+.label-l {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+}
+.label-m {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+}
+.muted {
+  color: var(--md-on-surface-variant);
+}
+.error-text {
+  color: var(--md-error);
+}
+.fine {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--md-on-surface-variant);
+}
+.pre-wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--stack-gap, 16px);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+.wrap {
+  flex-wrap: wrap;
+}
+
+/* Addresses and secrets: copyable text, wrapped anywhere. */
+.code {
+  display: block;
+  padding: 10px 12px;
+  border-radius: var(--shape-s);
+  background: var(--md-surface-container-highest);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* Headings take focus on a route change or a jump, for screen readers; they are not
+   controls, so they draw no focus ring. */
+h1[tabindex='-1']:focus,
+h2[tabindex='-1']:focus,
+p[tabindex='-1']:focus {
+  outline: none;
+}

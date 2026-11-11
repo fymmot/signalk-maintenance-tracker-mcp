@@ -1,0 +1,165 @@
+/*
+ * Material 3 Expressive tokens, hand-written.
+ *
+ * Copied from the chart-auto-routing planner (public/planner.css) so the two Signal K
+ * web apps read as one product, and both read as Skerry: the colour roles are Skerry's
+ * scheme (app/.../ui/theme/Color.kt). Material Web has no Expressive components, so
+ * this is the token system as custom properties with plain HTML.
+ *
+ * Light by default; dark with the system, or with [data-theme] set by Settings.
+ * Changes from the planner: the tertiary roles are complete in both dark blocks,
+ * and the roles the planner never needed (on-tertiary, surface-variant,
+ * surface-dim/bright) are added. Keep the two files in step until they share a package.
+ */
+
+:root {
+  /* Rows and cards: one role above the surface they sit on (raised in panes and sheets). */
+  --item-surface: var(--md-surface-container-low);
+  --md-primary: #266489;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #c9e6ff;
+  --md-on-primary-container: #004b6f;
+  --md-secondary: #50606e;
+  --md-on-secondary: #ffffff;
+  --md-secondary-container: #d3e5f5;
+  --md-on-secondary-container: #384956;
+  --md-tertiary: #64597b;
+  --md-on-tertiary: #ffffff;
+  --md-tertiary-container: #eaddff;
+  --md-on-tertiary-container: #4c4162;
+  --md-error: #ba1a1a;
+  --md-on-error: #ffffff;
+  --md-error-container: #ffdad6;
+  --md-on-error-container: #93000a;
+  --md-surface: #f7f9ff;
+  --md-surface-dim: #d7dadf;
+  --md-surface-bright: #f7f9ff;
+  --md-surface-variant: #dde3ea;
+  --md-on-surface: #181c20;
+  --md-on-surface-variant: #41474d;
+  --md-outline: #72787e;
+  --md-outline-variant: #c1c7ce;
+  --md-inverse-surface: #2d3135;
+  --md-inverse-on-surface: #eef1f6;
+  --md-inverse-primary: #95cdf7;
+  --md-surface-container-lowest: #ffffff;
+  --md-surface-container-low: #f1f4f9;
+  --md-surface-container: #ebeef3;
+  --md-surface-container-high: #e5e8ed;
+  --md-surface-container-highest: #e0e3e8;
+  --md-scrim: #000000;
+
+  /* Shape scale, with the Expressive steps. */
+  --shape-xs: 4px;
+  --shape-s: 8px;
+  --shape-m: 12px;
+  --shape-l: 16px;
+  --shape-l-inc: 20px;
+  --shape-xl: 28px;
+  --shape-xl-inc: 32px;
+  --shape-full: 999px;
+
+  /* Expressive motion: spring-like curves for movement, a tighter one for colour. */
+  --spring-fast: 350ms cubic-bezier(0.42, 1.67, 0.21, 0.9);
+  --spring-default: 500ms cubic-bezier(0.38, 1.21, 0.22, 1);
+  --effects-fast: 150ms cubic-bezier(0.31, 0.94, 0.34, 1);
+  --effects-default: 200ms cubic-bezier(0.34, 0.8, 0.34, 1);
+  --emphasized-decel: 400ms cubic-bezier(0.05, 0.7, 0.1, 1);
+  --emphasized-accel: 200ms cubic-bezier(0.3, 0, 0.8, 0.15);
+
+  --font: 'Roboto Flex', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --elev-3: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
+
+  /* App layout. */
+  --rail-width: 96px;
+  --bar-height: 80px;
+  --pane-gap: 24px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --md-primary: #95cdf7;
+    --md-on-primary: #00344e;
+    --md-primary-container: #004b6f;
+    --md-on-primary-container: #c9e6ff;
+    --md-secondary: #b7c9d9;
+    --md-on-secondary: #22323f;
+    --md-secondary-container: #384956;
+    --md-on-secondary-container: #d3e5f5;
+    --md-tertiary: #cfc0e8;
+    --md-on-tertiary: #352b4b;
+    --md-tertiary-container: #4c4162;
+    --md-on-tertiary-container: #eaddff;
+    --md-error: #ffb4ab;
+    --md-on-error: #690005;
+    --md-error-container: #93000a;
+    --md-on-error-container: #ffdad6;
+    --md-surface: #101417;
+    --md-surface-dim: #101417;
+    --md-surface-bright: #363a3e;
+    --md-surface-variant: #41474d;
+    --md-on-surface: #e0e3e8;
+    --md-on-surface-variant: #c1c7ce;
+    --md-outline: #8b9198;
+    --md-outline-variant: #41474d;
+    --md-inverse-surface: #e0e3e8;
+    --md-inverse-on-surface: #2d3135;
+    --md-inverse-primary: #266489;
+    --md-surface-container-lowest: #0b0f12;
+    --md-surface-container-low: #181c20;
+    --md-surface-container: #1c2024;
+    --md-surface-container-high: #262a2e;
+    --md-surface-container-highest: #313539;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --md-primary: #95cdf7;
+  --md-on-primary: #00344e;
+  --md-primary-container: #004b6f;
+  --md-on-primary-container: #c9e6ff;
+  --md-secondary: #b7c9d9;
+  --md-on-secondary: #22323f;
+  --md-secondary-container: #384956;
+  --md-on-secondary-container: #d3e5f5;
+  --md-tertiary: #cfc0e8;
+  --md-on-tertiary: #352b4b;
+  --md-tertiary-container: #4c4162;
+  --md-on-tertiary-container: #eaddff;
+  --md-error: #ffb4ab;
+  --md-on-error: #690005;
+  --md-error-container: #93000a;
+  --md-on-error-container: #ffdad6;
+  --md-surface: #101417;
+  --md-surface-dim: #101417;
+  --md-surface-bright: #363a3e;
+  --md-surface-variant: #41474d;
+  --md-on-surface: #e0e3e8;
+  --md-on-surface-variant: #c1c7ce;
+  --md-outline: #8b9198;
+  --md-outline-variant: #41474d;
+  --md-inverse-surface: #e0e3e8;
+  --md-inverse-on-surface: #2d3135;
+  --md-inverse-primary: #266489;
+  --md-surface-container-lowest: #0b0f12;
+  --md-surface-container-low: #181c20;
+  --md-surface-container: #1c2024;
+  --md-surface-container-high: #262a2e;
+  --md-surface-container-highest: #313539;
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --spring-fast: 0ms linear;
+    --spring-default: 0ms linear;
+    --effects-fast: 0ms linear;
+    --effects-default: 0ms linear;
+    --emphasized-decel: 0ms linear;
+    --emphasized-accel: 0ms linear;
+  }
+}

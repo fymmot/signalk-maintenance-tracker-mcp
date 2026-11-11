@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f7f9ff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#101417" media="(prefers-color-scheme: dark)" />
+    <title>Maintenance</title>
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <script>
+      // Apply a stored theme before first paint, so dark mode doesn't flash light.
+      // ?theme=dark|light wins (for a fixed display, or screenshots), then the saved choice.
+      try {
+        const t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('maintenance.theme')
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <noscript>This app needs JavaScript.</noscript>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>
