@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Signal K Maintenance Tracker
+  title: Signal K Maintenance Tracker MCP
   description: >-
     REST API for boat maintenance tracking: a System/Component/Part hierarchy
     with scheduled service-interval triggers, a known-issue/defect register,

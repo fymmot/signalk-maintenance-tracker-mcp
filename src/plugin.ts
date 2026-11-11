@@ -78,7 +78,7 @@ export function createPlugin(app: PluginApp): Plugin {
 
   const plugin: Plugin = {
     id: PLUGIN_ID,
-    name: 'Maintenance Tracker (MCP)',
+    name: 'Maintenance Tracker MCP',
     description:
       'Boat maintenance tracking: service intervals, a defect register and checklists, stored as git-backed YAML, with a built-in MCP server for Claude.',
     schema: () => CONFIG_SCHEMA,

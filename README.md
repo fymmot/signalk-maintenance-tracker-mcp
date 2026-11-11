@@ -1,8 +1,12 @@
-# Maintenance Tracker for Signal K
+# Maintenance Tracker MCP for Signal K
 
 A maintenance plan that lives on your boat. Record every system and part aboard, from
 the engine down to the impeller, and it tells you what's due, before launch and after
 haulout. Keep it up to date by telling your AI assistant what you did.
+
+*Great minds think alike! This plugin is not related to
+[hoeken's signalk-maintenance-tracker](https://github.com/hoeken/signalk-maintenance-tracker),
+which is also worth a look.*
 
 ![The Work list beside a part's page](./assets/screenshots/web-work-light.png)
 
@@ -37,8 +41,8 @@ You need Signal K server 2.x on Node.js 22 or later, and git on the server (Rasp
 Pi OS has it).
 
 1. In the Signal K Admin UI, open **Appstore → Available**, install **Maintenance
-   Tracker** and restart the server.
-2. Enable it under **Server → Plugin Config → Maintenance Tracker (MCP)**.
+   Tracker MCP** and restart the server.
+2. Enable it under **Server → Plugin Config → Maintenance Tracker MCP**.
 3. Open it from **Webapps**, or at `http://<your-server>:3000/signalk-maintenance-tracker-mcp/`.
 4. Choose **Start with a typical boat**. You get a sailing boat with an inboard engine,
    laid out with common intervals: engine, fuel, rig, hull, safety, gas and more.
