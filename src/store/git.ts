@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { CheckRepoActions, simpleGit, type SimpleGit } from 'simple-git'
 import type { GitStatus } from '../types'
 
@@ -41,7 +41,26 @@ export class GitStore {
     this.git = simpleGit({ baseDir: opts.dir, timeout: { block: 60_000 } })
   }
 
+  /**
+   * One init at a time per directory. A quick stop and start makes a second store for
+   * the same directory while the first may still be running `git init`, and two inits
+   * at once fail ("cannot copy … File exists").
+   */
+  private static readonly inits = new Map<string, Promise<void>>()
+
   async init(): Promise<void> {
+    const key = resolve(this.opts.dir)
+    const before = GitStore.inits.get(key) ?? Promise.resolve()
+    const mine = before.catch(() => undefined).then(() => this.initOnce())
+    GitStore.inits.set(key, mine)
+    try {
+      await mine
+    } finally {
+      if (GitStore.inits.get(key) === mine) GitStore.inits.delete(key)
+    }
+  }
+
+  private async initOnce(): Promise<void> {
     await fs.mkdir(this.opts.dir, { recursive: true })
     // The data directory must be a repository of its own. A plain checkIsRepo() is
     // true anywhere inside another repository (a ~/.signalk kept under git, say),

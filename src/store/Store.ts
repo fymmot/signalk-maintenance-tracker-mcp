@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs'
-import { join } from 'path'
+import { join, posix } from 'path'
 import { parse, stringify } from 'yaml'
 import type {
   BoatEvent,
@@ -26,8 +26,8 @@ const SUBDIR = {
   issues: 'issues',
   seasons: 'seasons',
   events: 'events',
-  templates: join('checklists', 'templates'),
-  runs: join('checklists', 'runs')
+  templates: 'checklists/templates',
+  runs: 'checklists/runs'
 } as const
 
 export class NotFoundError extends Error {
@@ -170,8 +170,9 @@ export class Store {
   private absPath(subdir: string, id: string): string {
     return join(this.root, subdir, `${id}.yml`)
   }
+  /** Repository-relative, with forward slashes on every OS: git's own form. */
   private relPath(subdir: string, id: string): string {
-    return join(subdir, `${id}.yml`)
+    return posix.join(subdir, `${id}.yml`)
   }
 
   private assertId(id: string): void {

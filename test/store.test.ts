@@ -90,8 +90,27 @@ describe('GitStore inside another repository', () => {
       { debug: () => undefined, error: () => undefined }
     )
     await store.init()
+    // Compare real, long paths with one separator: Windows reports a temp dir by its
+    // short name (RUNNER~1) and git with forward slashes.
     const { realpathSync } = await import('node:fs')
-    expect(git(data, 'rev-parse', '--show-toplevel')).toBe(realpathSync(data))
+    const real = (p: string) => realpathSync.native(p).replace(/\\/g, '/')
+    expect(real(git(data, 'rev-parse', '--show-toplevel'))).toBe(real(data))
     expect(() => git(outer, 'config', '--local', 'user.name')).toThrow()
+  })
+
+  it('lets two stores for one directory start at once, as a quick restart does', async () => {
+    const { mkdtempSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { GitStore } = await import('../src/store/git')
+    const dir = mkdtempSync(join(tmpdir(), 'maint-race-'))
+    const errors: string[] = []
+    const make = () =>
+      new GitStore(
+        { dir, remoteUrl: '', pushEnabled: false, pushDebounceMs: 0, authorName: 'maint', authorEmail: 'm@localhost' },
+        { debug: () => undefined, error: (m: string) => errors.push(m) }
+      )
+    await Promise.all([make().init(), make().init(), make().init()])
+    expect(errors).toEqual([])
   })
 })

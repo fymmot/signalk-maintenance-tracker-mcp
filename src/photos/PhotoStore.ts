@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'crypto'
 import { promises as fs } from 'fs'
-import { join } from 'path'
+import { join, posix } from 'path'
 import { atomicWriteFile } from '../store/atomicWrite'
 import { ValidationError } from '../store/validation'
 import type { Attachment } from '../types'
@@ -71,8 +71,9 @@ export class PhotoStore {
   private pendingBytesPath(id: string): string {
     return join(this.pendingDir(), id)
   }
+  /** Repository-relative, with forward slashes on every OS: git's own form. */
   mediaRelPath(id: string): string {
-    return join(MEDIA_DIR, id)
+    return posix.join(MEDIA_DIR, id)
   }
   private mediaAbsPath(id: string): string {
     return join(this.root, MEDIA_DIR, id)
