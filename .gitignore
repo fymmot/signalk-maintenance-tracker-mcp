@@ -15,5 +15,5 @@ mcp/__pycache__/
 mcp/.env
 
 # Web app build output (built by `npm run build`, shipped in the package)
-public/
+/public/
 .dev-data/
